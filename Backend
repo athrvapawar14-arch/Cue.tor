@@ -212,3 +212,52 @@ export async function registerRoutes(
   return httpServer;
 }
 
+import { promptGenerations, promptEvaluations, promptOptimizations, type PromptGeneration, type InsertPromptGeneration, type PromptEvaluation, type InsertPromptEvaluation, type PromptOptimization, type InsertPromptOptimization } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
+
+export interface IStorage {
+  // Generations
+  getGenerations(): Promise<PromptGeneration[]>;
+  createGeneration(generation: InsertPromptGeneration & { generatedPrompt: string }): Promise<PromptGeneration>;
+  
+  // Evaluations
+  getEvaluations(): Promise<PromptEvaluation[]>;
+  createEvaluation(evaluation: InsertPromptEvaluation): Promise<PromptEvaluation>;
+  
+  // Optimizations
+  getOptimizations(): Promise<PromptOptimization[]>;
+  createOptimization(optimization: InsertPromptOptimization): Promise<PromptOptimization>;
+}
+
+export class DatabaseStorage implements IStorage {
+  async getGenerations(): Promise<PromptGeneration[]> {
+    return await db.select().from(promptGenerations).orderBy(desc(promptGenerations.id));
+  }
+
+  async createGeneration(generation: InsertPromptGeneration & { generatedPrompt: string }): Promise<PromptGeneration> {
+    const [newGeneration] = await db.insert(promptGenerations).values(generation).returning();
+    return newGeneration;
+  }
+
+  async getEvaluations(): Promise<PromptEvaluation[]> {
+    return await db.select().from(promptEvaluations).orderBy(desc(promptEvaluations.id));
+  }
+
+  async createEvaluation(evaluation: InsertPromptEvaluation): Promise<PromptEvaluation> {
+    const [newEvaluation] = await db.insert(promptEvaluations).values(evaluation).returning();
+    return newEvaluation;
+  }
+
+  async getOptimizations(): Promise<PromptOptimization[]> {
+    return await db.select().from(promptOptimizations).orderBy(desc(promptOptimizations.id));
+  }
+
+  async createOptimization(optimization: InsertPromptOptimization): Promise<PromptOptimization> {
+    const [newOptimization] = await db.insert(promptOptimizations).values(optimization).returning();
+    return newOptimization;
+  }
+}
+
+export const storage = new DatabaseStorage();
+
