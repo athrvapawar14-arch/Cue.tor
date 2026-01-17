@@ -1,0 +1,191 @@
+/ Frontend / 
+
+
+
+import { useState } from 'react';
+import { Button } from '@/app/components/ui/button';
+import { Card } from '@/app/components/ui/card';
+import { Sparkles, ArrowRight, RotateCcw } from 'lucide-react';
+import { InputStep } from '@/app/components/InputStep';
+import { GeneratedPromptStep } from '@/app/components/GeneratedPromptStep';
+import { EvaluationStep } from '@/app/components/EvaluationStep';
+import { OptimizedPromptsStep } from '@/app/components/OptimizedPromptsStep';
+
+export type PromptInputs = {
+  template: string;
+  intent: string;
+  description: string;
+  tone: string;
+  outputFormat: string;
+};
+
+export default function App() {
+  const [step, setStep] = useState(1);
+  const [inputs, setInputs] = useState<PromptInputs>({
+    template: '',
+    intent: '',
+    description: '',
+    tone: '',
+    outputFormat: '',
+  });
+  const [generatedPrompt, setGeneratedPrompt] = useState('');
+
+  const handleInputComplete = (newInputs: PromptInputs) => {
+    setInputs(newInputs);
+    
+    // Generate prompt from inputs
+    let prompt = '';
+    
+    if (newInputs.description) {
+      prompt = `You are an AI assistant specialized in ${newInputs.template || 'general tasks'}. `;
+      
+      if (newInputs.intent === 'Informational') {
+        prompt += 'Provide clear, factual information ';
+      } else if (newInputs.intent === 'Creative') {
+        prompt += 'Generate creative and engaging content ';
+      } else if (newInputs.intent === 'Analytical') {
+        prompt += 'Analyze thoroughly and provide insights ';
+      } else if (newInputs.intent === 'Instructional') {
+        prompt += 'Give step-by-step instructions ';
+      }
+      
+      prompt += `about the following:\n\n${newInputs.description}`;
+      
+      if (newInputs.tone) {
+        prompt += `\n\nTone: ${newInputs.tone}`;
+      }
+      
+      if (newInputs.outputFormat) {
+        prompt += `\n\nFormat your response as: ${newInputs.outputFormat}`;
+      }
+      
+      prompt += '\n\nBe specific, accurate, and helpful in your response.';
+    }
+    
+    setGeneratedPrompt(prompt);
+    setStep(2);
+  };
+
+  const handleRestart = () => {
+    setStep(1);
+    setInputs({
+      template: '',
+      intent: '',
+      description: '',
+      tone: '',
+      outputFormat: '',
+    });
+    setGeneratedPrompt('');
+  };
+
+  const getStepTitle = () => {
+    switch(step) {
+      case 1: return 'Step 1: Describe Your Task';
+      case 2: return 'Step 2: Generated Prompt';
+      case 3: return 'Step 3: LLM Evaluation';
+      case 4: return 'Step 4: Optimized Prompts';
+      default: return '';
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      <div className="max-w-3xl mx-auto px-4 py-6 pb-24">
+        {/* Header */}
+        <header className="text-center mb-8">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <Sparkles className="w-8 h-8 text-blue-600" />
+            <h1 className="text-3xl font-bold text-gray-900">PromptForge</h1>
+          </div>
+          <p className="text-gray-600">Craft. Score. Perfect AI Prompts.</p>
+        </header>
+
+        {/* Progress Indicator */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-2">
+            {[1, 2, 3, 4].map((num) => (
+              <div key={num} className="flex items-center flex-1">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
+                    step >= num
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 text-gray-400'
+                  }`}
+                >
+                  {num}
+                </div>
+                {num < 4 && (
+                  <div
+                    className={`flex-1 h-1 mx-2 transition-all ${
+                      step > num ? 'bg-blue-600' : 'bg-gray-200'
+                    }`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-between text-xs text-gray-500 px-1">
+            <span className="w-16 text-center">Input</span>
+            <span className="w-16 text-center">Generate</span>
+            <span className="w-16 text-center">Evaluate</span>
+            <span className="w-16 text-center">Optimize</span>
+          </div>
+        </div>
+
+        {/* Step Title */}
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold text-gray-800">{getStepTitle()}</h2>
+        </div>
+
+        {/* Step Content */}
+        {step === 1 && (
+          <Card className="p-6">
+            <InputStep inputs={inputs} onComplete={handleInputComplete} />
+          </Card>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-4">
+            <GeneratedPromptStep 
+              prompt={generatedPrompt} 
+              onNext={() => setStep(3)}
+              onBack={() => setStep(1)}
+            />
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-4">
+            <EvaluationStep 
+              prompt={generatedPrompt}
+              onNext={() => setStep(4)}
+              onBack={() => setStep(2)}
+            />
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-4">
+            <OptimizedPromptsStep 
+              originalPrompt={generatedPrompt}
+              inputs={inputs}
+            />
+            <Button
+              onClick={handleRestart}
+              variant="outline"
+              className="w-full"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Start New Prompt
+            </Button>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="text-center mt-12 text-sm text-gray-500">
+          Perfect your AI prompts with intelligent optimization
+        </div>
+      </div>
+    </div>
+  );
+}
