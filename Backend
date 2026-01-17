@@ -1,0 +1,214 @@
+server routes 
+
+import type { Express } from "express";
+import type { Server } from "http";
+import { storage } from "./storage";
+import { api } from "@shared/routes";
+import { z } from "zod";
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
+
+async function generatePrompt(input: any) {
+  const systemPrompt = `You are a professional AI prompt engineer.
+Your task is to generate a high-quality prompt for a large language model based on the user's inputs.
+
+Inputs provided:
+- Target AI Model: ${input.targetModel}
+- Prompt Template/Style: ${input.promptTemplate}
+- Intent: ${input.promptIntent}
+- Context/Requirements: ${input.userRequirement}
+${input.tone ? `- Desired Tone: ${input.tone}` : ''}
+${input.outputFormat ? `- Output Format: ${input.outputFormat}` : ''}
+
+Rules:
+- Do NOT answer the user's requirement directly.
+- Only generate the PROMPT that would be used to task an AI with that requirement.
+- Include role, task, context, constraints, and expected output in the generated prompt.
+- Adapt structure based on the intent and target model.
+
+Output:
+Return ONLY the generated prompt. Do not add conversational filler.`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-5.1",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: "Generate the prompt." }
+    ],
+    temperature: 0.7,
+  });
+
+  return response.choices[0]?.message?.content || "Failed to generate prompt.";
+}
+
+async function evaluatePrompt(userPrompt: string) {
+  const systemPrompt = `You are an expert prompt evaluator.
+Your task is to evaluate a user-written prompt and assign objective scores.
+
+Steps:
+1. Classify the prompt intent as: Informational, Creative, Analytical, or Instructional
+2. Score the prompt on a scale of 0–10 for: Clarity, Context, Constraints
+3. Calculate the Overall Prompt Score as the average of the three scores.
+4. Provide strengths, weaknesses, improvement suggestions, and a prompt insight.
+
+Output ONLY in JSON format:
+{
+  "intent": "...",
+  "clarityScore": 8.5,
+  "contextScore": 7.0,
+  "constraintScore": 6.0,
+  "overallScore": 7.16,
+  "strengths": ["...", "..."],
+  "weaknesses": ["...", "..."],
+  "improvementSuggestions": ["...", "..."],
+  "insight": "..."
+}`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-5.1",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Evaluate this prompt: ${userPrompt}` }
+    ],
+    response_format: { type: "json_object" },
+  });
+
+  return JSON.parse(response.choices[0]?.message?.content || "{}");
+}
+
+async function optimizePrompt(userPrompt: string) {
+  const systemPrompt = `You are a professional prompt optimization assistant.
+Your task is to improve a user-written prompt and increase its evaluation score.
+
+Steps:
+1. Evaluate the original prompt and note its scores.
+2. Rewrite the prompt to improve clarity, context, and constraints.
+3. Re-evaluate the optimized prompt.
+
+Output ONLY in JSON format:
+{
+  "originalScores": { "clarity": 0, "context": 0, "constraints": 0, "overall": 0 },
+  "optimizedPrompt": "...",
+  "optimizedScores": { "clarity": 0, "context": 0, "constraints": 0, "overall": 0 },
+  "explanation": "...",
+  "insight": "..."
+}`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-5.1",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Optimize this prompt: ${userPrompt}` }
+    ],
+    response_format: { type: "json_object" },
+  });
+
+  return JSON.parse(response.choices[0]?.message?.content || "{}");
+}
+
+export async function registerRoutes(
+  httpServer: Server,
+  app: Express
+): Promise<Server> {
+  
+  app.get(api.generations.list.path, async (req, res) => {
+    const generations = await storage.getGenerations();
+    res.json(generations);
+  });
+
+  app.post(api.generations.create.path, async (req, res) => {
+    try {
+      const input = api.generations.create.input.parse(req.body);
+      const generatedPrompt = await generatePrompt(input);
+      const savedGeneration = await storage.createGeneration({ ...input, generatedPrompt });
+      res.status(201).json(savedGeneration);
+    } catch (err) {
+      console.error("Generation error:", err);
+      res.status(500).json({ message: "Failed to generate prompt" });
+    }
+  });
+
+  app.get(api.evaluations.list.path, async (req, res) => {
+    const evaluations = await storage.getEvaluations();
+    res.json(evaluations);
+  });
+
+  app.post(api.evaluations.create.path, async (req, res) => {
+    try {
+      const { userPrompt } = api.evaluations.create.input.parse(req.body);
+      const evaluationData = await evaluatePrompt(userPrompt);
+      const savedEvaluation = await storage.createEvaluation({
+        userPrompt,
+        ...evaluationData
+      });
+      res.status(201).json(savedEvaluation);
+    } catch (err) {
+      console.error("Evaluation error:", err);
+      res.status(500).json({ message: "Failed to evaluate prompt" });
+    }
+  });
+
+  app.get(api.optimizations.list.path, async (req, res) => {
+    const optimizations = await storage.getOptimizations();
+    res.json(optimizations);
+  });
+
+  app.post(api.optimizations.create.path, async (req, res) => {
+    try {
+      const { userPrompt } = api.optimizations.create.input.parse(req.body);
+      const optData = await optimizePrompt(userPrompt);
+      const savedOptimization = await storage.createOptimization({
+        originalPrompt: userPrompt,
+        optimizedPrompt: optData.optimizedPrompt,
+        explanation: optData.explanation,
+        insight: optData.insight,
+        originalScores: JSON.stringify(optData.originalScores),
+        optimizedScores: JSON.stringify(optData.optimizedScores)
+      });
+      res.status(201).json(savedOptimization);
+    } catch (err) {
+      console.error("Optimization error:", err);
+      res.status(500).json({ message: "Failed to optimize prompt" });
+    }
+  });
+
+  app.post(api.workflow.full.path, async (req, res) => {
+    try {
+      const input = api.workflow.full.input.parse(req.body);
+      
+      // 1. Generate
+      const generatedPrompt = await generatePrompt(input);
+      const generation = await storage.createGeneration({ ...input, generatedPrompt });
+
+      // 2. Evaluate
+      const evaluationData = await evaluatePrompt(generatedPrompt);
+      const evaluation = await storage.createEvaluation({
+        userPrompt: generatedPrompt,
+        ...evaluationData
+      });
+
+      // 3. Optimize
+      const optData = await optimizePrompt(generatedPrompt);
+      const optimization = await storage.createOptimization({
+        originalPrompt: generatedPrompt,
+        optimizedPrompt: optData.optimizedPrompt,
+        explanation: optData.explanation,
+        insight: optData.insight,
+        originalScores: JSON.stringify(optData.originalScores),
+        optimizedScores: JSON.stringify(optData.optimizedScores)
+      });
+
+      res.status(201).json({ generation, evaluation, optimization });
+    } catch (err) {
+      console.error("Workflow error:", err);
+      res.status(500).json({ message: "Full workflow failed" });
+    }
+  });
+
+  return httpServer;
+}
+
